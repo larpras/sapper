@@ -1,0 +1,6 @@
+.DS_Store
+/.idea/
+/.next/
+/node_modules
+/node_modules.nosync/
+/out/

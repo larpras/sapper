@@ -1,0 +1,149 @@
+import { useState } from "react";
+import cn from "classnames";
+import useConfData from "@lib/hooks/use-conf-data";
+import { useRouter } from "next/router";
+import FormError from "@lib/form-error";
+import styleUtils from "./utils.module.css";
+import styles from "./form.module.css";
+import useEmailQueryParam from "@lib/hooks/use-email-query-param";
+import { register } from "@lib/user-api";
+import LoadingDots from "@components/loading-dots";
+
+type FormState = "default" | "loading" | "error";
+
+type Props = {
+  sharePage?: boolean;
+};
+
+export default function Form({ sharePage }: Props) {
+  const [email, setEmail] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+  const [errorTryAgain, setErrorTryAgain] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [formState, setFormState] = useState<FormState>("default");
+  const { setPageState, setUserData } = useConfData();
+  const router = useRouter();
+  useEmailQueryParam("email", setEmail);
+
+  return formState === "error" ? (
+    <div
+      className={cn(styles.form, {
+        [styles["share-page"]]: sharePage,
+      })}
+    >
+      <div className={styles["form-row"]}>
+        <div className={cn(styles["input-label"], styles.error)}>
+          <div className={cn(styles.input, styles["input-text"])}>
+            {errorMsg}
+          </div>
+          <button
+            type="button"
+            className={cn(styles.submit, styles.register, styles.error)}
+          >
+            Go to 1Inch
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : (
+    <form
+      className={cn(styles.form, {
+        [styles["share-page"]]: sharePage,
+        [styleUtils.appear]: !errorTryAgain,
+        [styleUtils["appear-fifth"]]: !errorTryAgain && !sharePage,
+        [styleUtils["appear-third"]]: !errorTryAgain && sharePage,
+      })}
+      onSubmit={(e) => {
+        if (formState === "default") {
+          setFormState("loading");
+          register(email)
+            .then(async (res) => {
+              if (!res.ok) {
+                throw new FormError(res);
+              }
+
+              const data = await res.json();
+              const params = {
+                id: data.id,
+                ticketNumber: data.ticketNumber,
+                name: data.name,
+                username: data.username,
+              };
+
+              if (sharePage) {
+                const queryString = Object.keys(params)
+                  .map(
+                    (key) =>
+                      `${encodeURIComponent(key)}=${encodeURIComponent(
+                        params[key as keyof typeof params] || ""
+                      )}`
+                  )
+                  .join("&");
+                router.replace(`/?${queryString}`, "/");
+              } else {
+                setUserData(params);
+                setPageState("ticket");
+              }
+            })
+            .catch(async (err) => {
+              let message = "Error! Not yet implemented.";
+
+              if (err instanceof FormError) {
+                const { res } = err;
+                const data = res.headers
+                  .get("Content-Type")
+                  ?.includes("application/json")
+                  ? await res.json()
+                  : null;
+
+                if (data?.error?.code === "bad_email") {
+                  message = "Please enter a valid email";
+                }
+              }
+
+              setErrorMsg(message);
+              setFormState("error");
+            });
+        } else {
+          setFormState("default");
+        }
+        e.preventDefault();
+      }}
+    >
+      <div className={styles["form-row"]}>
+        <label
+          htmlFor="number-input-field"
+          className={cn(styles["input-label"], {
+            [styles.focused]: focused,
+          })}
+        >
+          <input
+            className={styles.input}
+            autoComplete="off"
+            id="number-input-field"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            placeholder="Address"
+            required
+          />
+        </label>
+        <button
+          type="button"
+          className={cn(styles.submit, styles.register, styles[formState])}
+          disabled={formState === "loading"}
+        >
+          {formState === "loading" ? <LoadingDots size={4} /> : <>Approve</>}
+        </button>
+        <button
+          type="submit"
+          className={cn(styles.submit, styles.register, styles[formState])}
+          disabled={formState === "loading"}
+        >
+          {formState === "loading" ? <LoadingDots size={4} /> : <>Load</>}
+        </button>
+      </div>
+    </form>
+  );
+}
